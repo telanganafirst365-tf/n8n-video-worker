@@ -6,17 +6,13 @@ const app = express();
 
 app.use(express.json());
 
+// --- GOD MODE LOGGING ---
 app.use((req, res, next) => {
     console.log(`[DEBUG] Incoming request: ${req.method} ${req.path}`);
     next();
 });
 
-app.get('/', (req, res) => {
-    res.status(200).send("Factory is Online");
-});
-
-app.post('/render', async (req, res) => {
-
+// Download utility (Defined globally)
 async function downloadFile(url, dest) {
     const writer = fs.createWriteStream(dest);
     const response = await axios({ 
@@ -31,11 +27,16 @@ async function downloadFile(url, dest) {
     });
 }
 
+app.get('/', (req, res) => {
+    res.status(200).send("Factory is Online");
+});
+
+// Single Render Route
 app.post('/render', async (req, res) => {
     const { inputUrl, outputPath, headline, channelName } = req.body;
     const localInput = '/tmp/input.mp4';
     
-    // Path configuration for your Docker container
+    // Path configuration for Docker
     const logoPath = `/app/logos/${channelName} Logo.png`;
     const fontPath = "/usr/local/share/fonts/Poppins-Bold.ttf";
 
@@ -52,20 +53,19 @@ app.post('/render', async (req, res) => {
                 "[vtext][logo]overlay=W-w-60:60[vout]"
             ])
             .outputOptions([
-                '-threads 1',                  // Force single thread to prevent RAM spikes
-                '-bufsize 1000k',              // Limit memory buffer
-                '-max_muxing_queue_size 999',  // Prevent buffer bloating
+                '-threads 1',                  
+                '-bufsize 1000k',              
+                '-max_muxing_queue_size 999',  
                 '-map [vout]', 
                 '-c:v libx264', 
-                '-preset ultrafast',           // Fastest processing, lowest RAM usage
-                '-crf 28',                     // Balanced quality for speed
+                '-preset ultrafast',           
+                '-crf 28',                     
                 '-c:a aac', 
                 '-b:a 96k', 
                 '-movflags +faststart'
             ])
             .output(outputPath)
             .on('end', () => {
-                // Clean up local temp file
                 if (fs.existsSync(localInput)) {
                     fs.unlinkSync(localInput);
                 }
@@ -82,7 +82,7 @@ app.post('/render', async (req, res) => {
     }
 });
 
-// Hugging Face requires port 7860 and 0.0.0.0 binding
+// Hugging Face port binding
 const PORT = process.env.PORT || 7860;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
