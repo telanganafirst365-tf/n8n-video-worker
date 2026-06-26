@@ -6,6 +6,17 @@ const app = express();
 
 app.use(express.json());
 
+app.use((req, res, next) => {
+    console.log(`[DEBUG] Incoming request: ${req.method} ${req.path}`);
+    next();
+});
+
+app.get('/', (req, res) => {
+    res.status(200).send("Factory is Online");
+});
+
+app.post('/render', async (req, res) => {
+
 async function downloadFile(url, dest) {
     const writer = fs.createWriteStream(dest);
     const response = await axios({ 
