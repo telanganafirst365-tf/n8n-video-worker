@@ -1,13 +1,13 @@
 FROM node:18-alpine
-# Install FFmpeg and Fontconfig
 RUN apk add --no-cache ffmpeg fontconfig
 
-# Create directory and copy your custom font
+# Copy fonts
 RUN mkdir -p /usr/local/share/fonts
 COPY Poppins-Bold.ttf /usr/local/share/fonts/Poppins-Bold.ttf
-
-# Refresh the font cache so FFmpeg can see it
 RUN fc-cache -fv
+
+# Copy logos - This correctly pulls from the logos/ folder you just created
+COPY logos/ /app/logos/
 
 WORKDIR /app
 COPY . .
