@@ -2,6 +2,8 @@ const express = require('express');
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 const axios = require('axios');
+const https = require('https');
+const crypto = require('crypto');
 const app = express();
 
 app.use(express.json());
@@ -12,11 +14,32 @@ app.use((req, res, next) => {
     next();
 });
 
+// --- TLS CONNECTION POOLING ---
+// This prevents Telegram from dropping concurrent parallel connections
+const httpsAgent = new https.Agent({  
+  keepAlive: true,
+  maxSockets: 10 
+});
+
 // Download utility
 async function downloadFile(url, dest) {
     const writer = fs.createWriteStream(dest);
-    const response = await axios({ method: 'GET', url: url, responseType: 'stream' });
+    console.log(`[NETWORK] Attempting to download to ${dest}`);
+    
+    const response = await axios({ 
+        method: 'GET', 
+        url: url, 
+        responseType: 'stream',
+        httpsAgent: httpsAgent,
+        timeout: 60000, // 60 seconds to allow for parallel network congestion
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*'
+        }
+    });
+    
     response.data.pipe(writer);
+    
     return new Promise((resolve, reject) => {
         writer.on('finish', resolve);
         writer.on('error', reject);
@@ -28,9 +51,9 @@ app.get('*', (req, res) => {
     res.status(200).send("Factory is Online and Active");
 });
 
-// Catch-all POST route: Hugging Face proxy paths will hit this regardless of prefixes
+// Catch-all POST route
 app.post('*', async (req, res) => {
-    console.log("[PIPELINE START] Processing payload:", req.body);
+    console.log("[PIPELINE START] Processing payload for:", req.body.channelName);
     
     const { inputUrl, outputPath, headline, channelName } = req.body;
     
@@ -39,15 +62,19 @@ app.post('*', async (req, res) => {
         return res.status(400).send({ error: "Missing required parameters in body" });
     }
 
-    const localInput = '/tmp/input.mp4';
+    // --- FIX: DYNAMIC UNIQUE FILE NAMING ---
+    // Generates a unique ID so the 5 parallel requests do not overwrite the same file
+    const uniqueId = crypto.randomBytes(4).toString('hex');
+    const localInput = `/tmp/input_${uniqueId}.mp4`;
+    
     const logoPath = `/app/logos/${channelName} Logo.png`;
     const fontPath = "/usr/local/share/fonts/Poppins-Bold.ttf";
 
     try {
-        console.log(`[STATUS] Downloading raw video asset from storage...`);
+        console.log(`[STATUS] [${channelName}] Downloading raw video asset...`);
         await downloadFile(inputUrl, localInput);
         
-        console.log(`[STATUS] Initializing FFmpeg filter pipeline processing...`);
+        console.log(`[STATUS] [${channelName}] Initializing FFmpeg filter pipeline...`);
         ffmpeg()
             .input(localInput)
             .input(logoPath)
@@ -58,7 +85,7 @@ app.post('*', async (req, res) => {
                 "[vtext][logo]overlay=W-w-60:60[vout]"
             ])
             .outputOptions([
-                '-threads 1',                  
+                '-threads 2',                  
                 '-bufsize 1000k',              
                 '-max_muxing_queue_size 999',  
                 '-map [vout]', 
@@ -71,20 +98,20 @@ app.post('*', async (req, res) => {
             ])
             .output(outputPath)
             .on('end', () => {
-                console.log(`[SUCCESS] Rendering complete. Cleaning up workspace...`);
+                console.log(`[SUCCESS] [${channelName}] Rendering complete. Cleaning up workspace...`);
                 if (fs.existsSync(localInput)) {
                     fs.unlinkSync(localInput);
                 }
                 res.status(200).send({ status: 'success' });
             })
             .on('error', (err) => {
-                console.error("[FFMPEG CORE ERROR]:", err.message);
+                console.error(`[FFMPEG CORE ERROR - ${channelName}]:`, err.message);
                 if (fs.existsSync(localInput)) fs.unlinkSync(localInput);
                 res.status(500).send({ error: err.message });
             })
             .run();
     } catch (err) {
-        console.error("[SYSTEM ERROR]:", err.message);
+        console.error(`[SYSTEM ERROR - ${channelName}]:`, err.message);
         if (fs.existsSync(localInput)) fs.unlinkSync(localInput);
         res.status(500).send({ error: 'Process execution failed: ' + err.message });
     }
