@@ -5,14 +5,9 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-// Robust downloader using Axios
 async function downloadFile(url, dest) {
     const writer = fs.createWriteStream(dest);
-    const response = await axios({
-        method: 'GET',
-        url: url,
-        responseType: 'stream'
-    });
+    const response = await axios({ method: 'GET', url: url, responseType: 'stream' });
     response.data.pipe(writer);
     return new Promise((resolve, reject) => {
         writer.on('finish', resolve);
@@ -21,18 +16,16 @@ async function downloadFile(url, dest) {
 }
 
 app.post('/render', async (req, res) => {
-    const { inputUrl, outputPath, headline, logoPath } = req.body;
+    const { inputUrl, outputPath, headline, channelName } = req.body;
     const localInput = '/tmp/input.mp4';
     
-    // Ensure we have a URL
-    if (!inputUrl) return res.status(400).send('Missing inputUrl');
+    // This matches the filename in your GitHub 'logos' folder
+    const logoPath = `/app/logos/${channelName} Logo.png`;
+    const fontPath = "/usr/local/share/fonts/Poppins-Bold.ttf";
 
     try {
-        console.log('Downloading:', inputUrl);
         await downloadFile(inputUrl, localInput);
         
-        const fontPath = "/usr/local/share/fonts/Poppins-Bold.ttf";
-
         ffmpeg()
             .input(localInput)
             .input(logoPath)
@@ -40,19 +33,15 @@ app.post('/render', async (req, res) => {
             .outputOptions(['-map [vout]', '-c:v libx264', '-preset veryfast', '-crf 23', '-c:a aac', '-b:a 128k', '-movflags +faststart'])
             .output(outputPath)
             .on('end', () => {
-                fs.unlinkSync(localInput); // Clean up
+                fs.unlinkSync(localInput);
                 res.status(200).send({ status: 'success' });
             })
-            .on('error', (err) => {
-                console.error('FFmpeg Error:', err);
-                res.status(500).send({ error: err.message });
-            })
+            .on('error', (err) => res.status(500).send({ error: err.message }))
             .run();
     } catch (err) {
-        console.error('Download Error:', err);
-        res.status(500).send({ error: 'Download failed: ' + err.message });
+        res.status(500).send({ error: 'Process failed: ' + err.message });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('Worker is ready'));
+app.listen(PORT);
