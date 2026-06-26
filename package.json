@@ -1,10 +1,15 @@
 {
-  "name": "video-worker",
+  "name": "n8n-video-worker",
   "version": "1.0.0",
+  "description": "Video automation worker for HandTechs AI & IT Solutions",
   "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "express": "^4.18.2",
     "fluent-ffmpeg": "^2.1.2",
-    "axios": "^1.7.0"
+    "axios": "^1.6.2",
+    "multer": "^1.4.5-lts.1"
   }
 }
