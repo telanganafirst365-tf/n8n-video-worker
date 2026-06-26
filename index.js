@@ -15,23 +15,22 @@ app.use((req, res, next) => {
 });
 
 // --- TLS CONNECTION POOLING ---
-// This prevents Telegram from dropping concurrent parallel connections
 const httpsAgent = new https.Agent({  
   keepAlive: true,
-  maxSockets: 10 
+  maxSockets: 25 // Increased socket availability for higher concurrency stability
 });
 
 // Download utility
 async function downloadFile(url, dest) {
     const writer = fs.createWriteStream(dest);
-    console.log(`[NETWORK] Attempting to download to ${dest}`);
+    console.log(`[NETWORK] Starting multi-stream download to target path: ${dest}`);
     
     const response = await axios({ 
         method: 'GET', 
         url: url, 
         responseType: 'stream',
         httpsAgent: httpsAgent,
-        timeout: 60000, // 60 seconds to allow for parallel network congestion
+        timeout: 0, // CRITICAL: Disables the timeout constraint entirely so large parallel media streams don't drop
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': '*/*'
@@ -41,8 +40,14 @@ async function downloadFile(url, dest) {
     response.data.pipe(writer);
     
     return new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
+        writer.on('finish', () => {
+            console.log(`[NETWORK SUCCESS] Asset successfully cached to: ${dest}`);
+            resolve();
+        });
+        writer.on('error', (err) => {
+            console.error(`[NETWORK ERROR] Download failed for destination ${dest}:`, err.message);
+            reject(err);
+        });
     });
 }
 
@@ -53,17 +58,15 @@ app.get('*', (req, res) => {
 
 // Catch-all POST route
 app.post('*', async (req, res) => {
-    console.log("[PIPELINE START] Processing payload for:", req.body.channelName);
+    console.log("[PIPELINE START] Processing payload for target variant:", req.body.channelName);
     
     const { inputUrl, outputPath, headline, channelName } = req.body;
     
     if (!inputUrl || !outputPath || !headline || !channelName) {
-        console.error("[ERROR] Missing parameters in payload");
+        console.error("[ERROR] Missing parameters in payload configuration");
         return res.status(400).send({ error: "Missing required parameters in body" });
     }
 
-    // --- FIX: DYNAMIC UNIQUE FILE NAMING ---
-    // Generates a unique ID so the 5 parallel requests do not overwrite the same file
     const uniqueId = crypto.randomBytes(4).toString('hex');
     const localInput = `/tmp/input_${uniqueId}.mp4`;
     
@@ -86,7 +89,7 @@ app.post('*', async (req, res) => {
             ])
             .outputOptions([
                 '-threads 2',                  
-                '-bufsize 1000k',              
+                '-bufsize 2000k', // Expanded structural buffer space to optimize processing speed under 16GB overhead             
                 '-max_muxing_queue_size 999',  
                 '-map [vout]', 
                 '-c:v libx264', 
