@@ -1,19 +1,22 @@
-FROM node:18-alpine
-RUN apk add --no-cache ffmpeg fontconfig
+# Use an official Node runtime as a parent image
+FROM node:18-bullseye
 
-# Copy fonts
-RUN mkdir -p /usr/local/share/fonts
-COPY Poppins-Bold.ttf /usr/local/share/fonts/Poppins-Bold.ttf
-RUN fc-cache -fv
+# Install FFmpeg (Crucial for your video processing)
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
-# Set workdir and copy files
+# Set the working directory in the container
 WORKDIR /app
-COPY . .
 
-# Install deps
+# Copy package.json and install dependencies first (Optimizes build cache)
+COPY package*.json ./
 RUN npm install
 
-# THIS IS THE CRITICAL LINE
+# THE FIX: Copy EVERYTHING from GitHub into the /app folder
+# This includes index.js, the logos folder, and the Poppins fonts
+COPY . .
+
+# Expose the port Hugging Face expects
 EXPOSE 7860
 
+# Command to run the application
 CMD ["node", "index.js"]
