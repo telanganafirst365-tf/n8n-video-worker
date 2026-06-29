@@ -24,37 +24,44 @@ app.get('*', (req, res) => {
 app.post('*', upload.single('videoFile'), async (req, res) => {
     console.log("[BINARY INGESTION] Raw media buffer delivered from n8n.");
     
-    // Extract parameters from headers
     const headline = req.header('x-headline');
     const channelName = req.header('x-channel-name');
     const outputPath = req.header('x-output-path');
 
     if (!req.file) {
-        console.error("[ERROR] No binary video file received in multipart request body.");
+        console.error("[ERROR] No binary video file received.");
         return res.status(400).send({ error: "Missing uploaded binary file data." });
     }
 
     if (!headline || !channelName || !outputPath) {
-        console.error("[ERROR] Missing rendering configuration values in payload headers.");
+        console.error("[ERROR] Missing rendering configuration values.");
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).send({ error: "Missing required header metrics (x-headline, x-channel-name, x-output-path)." });
     }
 
     const localInput = req.file.path; 
     
-    // --- FIX: DYNAMIC ABSOLUTE PATHING ---
-    // Uses __dirname to perfectly match wherever Hugging Face installed the repo
+    // Dynamic Absolute Pathing
     const logoPath = path.join(__dirname, 'logos', `${channelName} Logo.png`);
-    
-    // Pointing directly to the font file in the root of your GitHub repo
     const fontPath = path.join(__dirname, 'Poppins-Bold.ttf');
 
-    // --- PRE-FLIGHT ASSET CHECKS ---
-    // These guards prevent FFmpeg from crashing by verifying the files exist first
+    // --- X-RAY PRE-FLIGHT ASSET CHECKS ---
     if (!fs.existsSync(logoPath)) {
-        console.error(`[CRITICAL ASSET MISSING] Could not find logo at exact path: ${logoPath}`);
+        let availableFiles = "Directory 'logos' does not exist in the container.";
+        const logosDir = path.join(__dirname, 'logos');
+        
+        // Scan the directory to see what HF actually downloaded
+        if (fs.existsSync(logosDir)) {
+            availableFiles = fs.readdirSync(logosDir).join(', ');
+        }
+        
+        console.error(`[CRITICAL ASSET MISSING] Could not find logo at: ${logoPath}`);
+        console.error(`[DEBUG X-RAY] Files actually inside /logos/: [${availableFiles}]`);
+        
         if (fs.existsSync(localInput)) fs.unlinkSync(localInput);
-        return res.status(404).send({ error: `Missing Logo: ${logoPath}. Please Factory Rebuild your Hugging Face Space to sync with GitHub!` });
+        return res.status(404).send({ 
+            error: `Missing Logo: ${logoPath}. Files found in folder: [${availableFiles}]. You MUST click 'Factory Rebuild' in HF Settings!` 
+        });
     }
 
     if (!fs.existsSync(fontPath)) {
