@@ -1,7 +1,6 @@
 const express = require('express');
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
-const crypto = require('crypto');
 const path = require('path');
 const multer = require('multer');
 
@@ -21,11 +20,11 @@ app.get('*', (req, res) => {
     res.status(200).send("Sequential Video Factory is Online and Active");
 });
 
-// BATCH BINARY ENTRY ROUTE (Bypasses Telegram TLS Blocks entirely)
+// BATCH BINARY ENTRY ROUTE
 app.post('*', upload.single('videoFile'), async (req, res) => {
     console.log("[BINARY INGESTION] Raw media buffer delivered from n8n.");
     
-    // Extract parameters from headers passed by n8n
+    // Extract parameters from headers
     const headline = req.header('x-headline');
     const channelName = req.header('x-channel-name');
     const outputPath = req.header('x-output-path');
@@ -42,8 +41,27 @@ app.post('*', upload.single('videoFile'), async (req, res) => {
     }
 
     const localInput = req.file.path; 
-    const logoPath = `/app/logos/${channelName} Logo.png`;
-    const fontPath = "/usr/local/share/fonts/Poppins-Bold.ttf";
+    
+    // --- FIX: DYNAMIC ABSOLUTE PATHING ---
+    // Uses __dirname to perfectly match wherever Hugging Face installed the repo
+    const logoPath = path.join(__dirname, 'logos', `${channelName} Logo.png`);
+    
+    // Pointing directly to the font file in the root of your GitHub repo
+    const fontPath = path.join(__dirname, 'Poppins-Bold.ttf');
+
+    // --- PRE-FLIGHT ASSET CHECKS ---
+    // These guards prevent FFmpeg from crashing by verifying the files exist first
+    if (!fs.existsSync(logoPath)) {
+        console.error(`[CRITICAL ASSET MISSING] Could not find logo at exact path: ${logoPath}`);
+        if (fs.existsSync(localInput)) fs.unlinkSync(localInput);
+        return res.status(404).send({ error: `Missing Logo: ${logoPath}. Please Factory Rebuild your Hugging Face Space to sync with GitHub!` });
+    }
+
+    if (!fs.existsSync(fontPath)) {
+        console.error(`[CRITICAL ASSET MISSING] Could not find font at exact path: ${fontPath}`);
+        if (fs.existsSync(localInput)) fs.unlinkSync(localInput);
+        return res.status(404).send({ error: `Missing Font: ${fontPath}` });
+    }
 
     console.log(`[ENGINE INITIALIZATION] Commencing render for: ${channelName}`);
     console.log(`[TARGET OUTPUT PATH]: ${outputPath}`);
