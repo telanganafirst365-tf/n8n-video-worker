@@ -45,22 +45,16 @@ app.post('*', upload.single('videoFile'), async (req, res) => {
     const logoPath = path.join(__dirname, 'logos', `${channelName} Logo.png`);
     const fontPath = path.join(__dirname, 'Poppins-Bold.ttf');
 
-    // --- X-RAY PRE-FLIGHT ASSET CHECKS ---
+    // --- PRE-FLIGHT ASSET CHECKS ---
     if (!fs.existsSync(logoPath)) {
         let availableFiles = "Directory 'logos' does not exist in the container.";
         const logosDir = path.join(__dirname, 'logos');
-        
-        // Scan the directory to see what HF actually downloaded
         if (fs.existsSync(logosDir)) {
             availableFiles = fs.readdirSync(logosDir).join(', ');
         }
-        
-        console.error(`[CRITICAL ASSET MISSING] Could not find logo at: ${logoPath}`);
-        console.error(`[DEBUG X-RAY] Files actually inside /logos/: [${availableFiles}]`);
-        
         if (fs.existsSync(localInput)) fs.unlinkSync(localInput);
         return res.status(404).send({ 
-            error: `Missing Logo: ${logoPath}. Files found in folder: [${availableFiles}]. You MUST click 'Factory Rebuild' in HF Settings!` 
+            error: `Missing Logo: ${logoPath}. Files found in folder: [${availableFiles}].` 
         });
     }
 
@@ -70,7 +64,17 @@ app.post('*', upload.single('videoFile'), async (req, res) => {
         return res.status(404).send({ error: `Missing Font: ${fontPath}` });
     }
 
+    // --- FIX: FFMEG FILTER SANITIZATION ---
+    // Colons, commas, backslashes, and single quotes must be escaped for drawtext to parse safely
+    const sanitizedHeadline = headline
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "'\\''")
+        .replace(/:/g, '\\:')
+        .replace(/,/g, '\\,')
+        .replace(/%/g, '\\%');
+
     console.log(`[ENGINE INITIALIZATION] Commencing render for: ${channelName}`);
+    console.log(`[CLEANED HEADLINE TEXT]: ${sanitizedHeadline}`);
     console.log(`[TARGET OUTPUT PATH]: ${outputPath}`);
 
     try {
@@ -79,7 +83,7 @@ app.post('*', upload.single('videoFile'), async (req, res) => {
             .input(logoPath)
             .complexFilter([
                 "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[base];" +
-                `[base]drawtext=fontfile='${fontPath}':text='${headline}':fontsize=32:fontcolor=white:x=60:y=1000[vtext];` +
+                `[base]drawtext=fontfile='${fontPath}':text='${sanitizedHeadline}':fontsize=32:fontcolor=white:x=60:y=1000[vtext];` +
                 "[1:v]scale=220:-1[logo];" +
                 "[vtext][logo]overlay=W-w-60:60[vout]"
             ])
