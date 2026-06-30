@@ -1,21 +1,25 @@
 # Use an official Node runtime as a parent image
 FROM node:18-bullseye
 
-# Install FFmpeg (Crucial for your video processing)
+# Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory in the container
+# Set the working directory
 WORKDIR /app
 
-# Copy package.json and install dependencies first (Optimizes build cache)
+# Copy package config and install base dependencies
 COPY package*.json ./
 RUN npm install
 
-# THE FIX: Copy EVERYTHING from GitHub into the /app folder
-# This includes index.js, the logos folder, and the Poppins fonts
-COPY . .
+# THE FIX: Explicitly install the S3/R2 Cloud SDK
+RUN npm install @aws-sdk/client-s3
 
-# Expose the port Hugging Face expects
+# Explicitly force Docker to copy the assets
+COPY logos/ ./logos/
+COPY Poppins-Bold.ttf ./
+COPY index.js ./
+
+# Expose the port
 EXPOSE 7860
 
 # Command to run the application
