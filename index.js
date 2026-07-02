@@ -129,7 +129,7 @@ app.post('*', upload.array('mediaFiles', 12), async (req, res) => {
         return res.status(400).send({ error: "Missing uploaded binary asset data." });
     }
 
-    const logoPath = path.join(__dirname, 'logos', `${channelName} Logo.png`);
+    const logoPath = path.join(__dirname, 'logos', channelName);
     const fontPath = path.join(__dirname, 'Poppins-Bold.ttf');
 
     if (!fs.existsSync(logoPath) || !fs.existsSync(fontPath)) {
